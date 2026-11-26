@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MoneyMate — 내 PC에서 처리하는 가계부 분석</title>
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">MoneyMate <span>카드·은행 내역 → 자동 분류 → 이상 지출·예산 경고 (내 PC에서만 처리)</span></div>
+    <div class="status">
+      <span id="status">상태 확인 중…</span>
+      <button id="reconnect" class="ghost mini" type="button">AI 다시 연결</button>
+      <button id="forget" class="ghost mini danger" type="button">내 기록 모두 삭제</button>
+    </div>
+  </header>
+
+  <main>
+    <nav class="tabs" role="tablist">
+      <button class="tab on" data-tab="import" type="button">가져오기</button>
+      <button class="tab" data-tab="report" type="button">월 리포트</button>
+      <button class="tab" data-tab="tx" type="button">거래 내역</button>
+      <button class="tab" data-tab="budget" type="button">예산</button>
+    </nav>
+
+    <section id="tab-import" class="panel">
+      <h2>1. 카드·은행 내역 CSV를 올려 주세요</h2>
+      <p class="hint">카드사·은행 사이트에서 내려받은 CSV(날짜·가맹점/적요·금액 또는 출금/입금 열). UTF-8과 CP949 모두 됩니다. 파일은 저장하지 않고 정리된 거래만 이 PC의 데이터베이스에 남습니다.</p>
+      <div class="row">
+        <input id="file" type="file" accept=".csv,.txt,text/csv">
+        <button id="goImport" class="primary" type="button">가져오기</button>
+        <button id="sample" class="ghost" type="button">샘플로 체험하기</button>
+      </div>
+      <p id="importMsg" class="muted" aria-live="polite"></p>
+      <div id="importResult"></div>
+      <h3>가져온 파일</h3>
+      <div id="imports"></div>
+      <h3>분류되지 않은 가맹점</h3>
+      <p class="hint">사전에 없는 가맹점은 '기타'로 들어갑니다. AI가 카테고리를 <b>제안</b>할 수 있지만(가맹점 이름만 보내고 금액은 보내지 않음) 틀릴 수 있어 <b>"AI 제안(미확인)"</b>으로 표시하고, 직접 확인한 것만 확정됩니다.</p>
+      <div class="row"><button id="goAi" class="ghost" type="button">AI에게 분류 제안 받기</button><span id="aiMsg" class="muted" aria-live="polite"></span></div>
+    </section>
+
+    <section id="tab-report" class="panel hidden">
+      <div class="row"><h2 style="margin:0">월 리포트</h2><select id="month" aria-label="월 선택"></select><a id="exportLink" class="small" href="#">리포트 내려받기(.md)</a></div>
+      <div id="report"></div>
+    </section>
+
+    <section id="tab-tx" class="panel hidden">
+      <h2>거래 내역</h2>
+      <div class="row">
+        <select id="txMonth" aria-label="월"></select>
+        <select id="txCat" aria-label="카테고리"></select>
+        <input id="txQ" type="text" placeholder="가맹점 검색" maxlength="60">
+        <button id="goTx" class="primary" type="button">조회</button>
+      </div>
+      <p class="hint">카테고리를 바꾸면 <b>같은 가맹점의 모든 거래</b>에 적용되고 앞으로 가져오는 파일에도 기억됩니다.</p>
+      <div id="txs"></div>
+    </section>
+
+    <section id="tab-budget" class="panel hidden">
+      <h2>카테고리별 월 예산</h2>
+      <p class="hint">예산을 넣으면 월 리포트에서 초과 여부를 알려 주고, 이번 달에는 지금까지 쓴 속도로 월말 지출을 예상해 미리 경고합니다. 비우고 저장하면 삭제됩니다.</p>
+      <div id="budgets"></div>
+    </section>
+  </main>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

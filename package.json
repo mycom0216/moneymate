@@ -1,0 +1,13 @@
+{
+  "name": "moneymate",
+  "version": "1.0.0",
+  "description": "MoneyMate - 로컬에서 처리하는 카드·은행 내역 분석(자동 분류·이상 지출 탐지·예산 경고)",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.0.0" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test test/",
+    "eval": "node tools/eval.mjs"
+  }
+}
