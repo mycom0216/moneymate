@@ -6,7 +6,9 @@
   <title>MoneyMate — 내 PC에서 처리하는 가계부 분석</title>
   <link rel="stylesheet" href="/style.css">
 </head>
+  <!-- 화면 구성: 상단 바(상태·AI 재연결·전체 삭제) + 탭 4개(가져오기·월 리포트·거래 내역·예산). 내용은 app.js가 서버에서 받아 그립니다. -->
 <body>
+  <!-- 상단 바: 서비스 이름, AI 연결 상태, [AI 다시 연결], [내 기록 모두 삭제] -->
   <header class="top">
     <div class="brand">MoneyMate <span>카드·은행 내역 → 자동 분류 → 이상 지출·예산 경고 (내 PC에서만 처리)</span></div>
     <div class="status">
@@ -17,6 +19,7 @@
   </header>
 
   <main>
+    <!-- 탭 버튼: data-tab 값이 app.js의 TABS와 연결됩니다 -->
     <nav class="tabs" role="tablist">
       <button class="tab on" data-tab="import" type="button">가져오기</button>
       <button class="tab" data-tab="report" type="button">월 리포트</button>
@@ -24,6 +27,7 @@
       <button class="tab" data-tab="budget" type="button">예산</button>
     </nav>
 
+    <!-- 1) 가져오기: CSV 선택·샘플 체험·가져온 파일 목록·AI 분류 제안 -->
     <section id="tab-import" class="panel">
       <h2>1. 카드·은행 내역 CSV를 올려 주세요</h2>
       <p class="hint">카드사·은행 사이트에서 내려받은 CSV(날짜·가맹점/적요·금액 또는 출금/입금 열). UTF-8과 CP949 모두 됩니다. 파일은 저장하지 않고 정리된 거래만 이 PC의 데이터베이스에 남습니다.</p>
@@ -41,11 +45,13 @@
       <div class="row"><button id="goAi" class="ghost" type="button">AI에게 분류 제안 받기</button><span id="aiMsg" class="muted" aria-live="polite"></span></div>
     </section>
 
+    <!-- 2) 월 리포트: 월 선택 후 핵심 숫자·경고·예산·카테고리·일별·가맹점·정기결제 (내용은 app.js가 채움) -->
     <section id="tab-report" class="panel hidden">
       <div class="row"><h2 style="margin:0">월 리포트</h2><select id="month" aria-label="월 선택"></select><a id="exportLink" class="small" href="#">리포트 내려받기(.md)</a></div>
       <div id="report"></div>
     </section>
 
+    <!-- 3) 거래 내역: 월·카테고리·검색 필터, 카테고리를 바로 고칠 수 있는 표 -->
     <section id="tab-tx" class="panel hidden">
       <h2>거래 내역</h2>
       <div class="row">
@@ -58,12 +64,14 @@
       <div id="txs"></div>
     </section>
 
+    <!-- 4) 예산: 카테고리별 월 예산 입력 -->
     <section id="tab-budget" class="panel hidden">
       <h2>카테고리별 월 예산</h2>
       <p class="hint">예산을 넣으면 월 리포트에서 초과 여부를 알려 주고, 이번 달에는 지금까지 쓴 속도로 월말 지출을 예상해 미리 경고합니다. 비우고 저장하면 삭제됩니다.</p>
       <div id="budgets"></div>
     </section>
   </main>
+  <!-- 화면 로직(외부 라이브러리 없음, CSP 때문에 인라인 스크립트도 쓰지 않음) -->
   <script src="/app.js" type="module"></script>
 </body>
 </html>

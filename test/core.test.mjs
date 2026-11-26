@@ -7,6 +7,7 @@ import { normalizeMerchant, classify, matchRule } from '../src/merchant.mjs';
 import { summarize, detectAnomalies, findRecurring, budgetStatus, median } from '../src/analyze.mjs';
 import { parseJsonArray, validateSuggestions, suggestCategories } from '../src/ai.mjs';
 
+// 이 파일은 "핵심 로직"을 DB·서버 없이 순수 함수 단위로 검증합니다. 각 test()는 한 가지 규칙을 확인하고, 제목이 곧 기대 동작의 설명입니다.
 // ── CSV ───────────────────────────────────────────────────
 test('CSV: 따옴표 안의 쉼표·큰따옴표·줄바꿈, CRLF, 빈 줄', () => {
   const rows = parseCSV('a,b,c\r\n"1,000","he said ""hi""","x\ny"\r\n\r\n4,5,6\r\n');
@@ -85,6 +86,7 @@ test('분류: 가장 긴 키워드 우선, 짧은 영문은 앞에서만, 사용
 });
 
 // ── 분석 ──────────────────────────────────────────────────
+// 분석 테스트용 도우미: T(...)는 거래 한 건을 간단히 만들고(id 자동 증가), history(...)는 평소 지출 n건을 만들어 비교 기준(중앙값)으로 씁니다.
 let nextId = 1;
 const T = (date, merchant, amount, category = '식비', o = {}) => ({ id: nextId++, date, time: null, merchant, norm: normalizeMerchant(merchant), amount, kind: 'expense', category, catMethod: 'rule', ...o });
 const history = (cat, name, n, base, month = '2026-09') => Array.from({ length: n }, (_, i) => T(`${month}-${String(1 + i).padStart(2, '0')}`, name + (i % 3), base + (i % 4) * 500, cat));

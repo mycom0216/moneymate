@@ -1,6 +1,8 @@
 # 변이 검사: 핵심 로직을 일부러 망가뜨리고 테스트가 잡아내는지 확인합니다(끝나면 원래대로 복구).
 import subprocess, re, sys, io
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+# 각 항목: (파일, 원래 코드 조각, 망가뜨린 코드 조각, 설명). 원래 조각을 찾아 한 번만 바꾸고 테스트를 돌립니다.
+# 테스트가 하나라도 실패하면 "검출"(테스트가 그 결함을 잡는다는 뜻), 모두 통과하면 "미검출"(테스트가 약하다는 뜻 → 테스트 보강 필요).
 M = [
  ('src/analyze.mjs', "if (Math.max(...mins) - Math.min(...mins) > 10) continue;", "", '중복 결제의 시각 간격 검사 제거'),
  ('src/db.mjs', "SELECT * FROM transactions WHERE user_id = ? AND tx_id = ?", "SELECT * FROM transactions WHERE ? IS NOT NULL AND tx_id = ?", '거래 조회의 소유자 조건 제거'),
@@ -15,6 +17,7 @@ M = [
  ('src/analyze.mjs', "cur && elapsed >= 7", "cur && elapsed >= 1", '월말 예상의 7일 조건 제거'),
  ('src/ledger.mjs', "isValidDate(y, mo, d)", "true", '존재하지 않는 날짜 검사 제거'),
 ]
+# 실행 루프: 파일을 바꾸고 → 전체 테스트 실행 → 실패 개수 확인 → finally에서 반드시 원래 내용으로 복구합니다.
 killed = 0
 for f, old, new, label in M:
     s = open(f, encoding='utf8').read()

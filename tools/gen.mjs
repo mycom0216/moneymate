@@ -9,8 +9,10 @@
 // [형식]  style A 카드(시각 포함, 취소 행)  B 카드(안내 문구·따옴표 금액·합계 행)  C 은행(출금/입금/잔액)
 // ─────────────────────────────────────────────────────────────────────────────
 
+// 시드 고정 난수 생성기(mulberry32): 같은 시드면 항상 같은 순서의 난수 → 평가 데이터를 언제나 똑같이 다시 만들 수 있음(재현성).
 export const rng = (seed) => { let a = seed >>> 0; return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; };
 
+// 가맹점 풀: variant(dev/held/held2)마다 쓰는 가게 이름이 다릅니다. 평가 세트가 개발 때 본 가게와 겹치지 않게 하려는 장치입니다.
 const POOLS = {
   held2: {
     식비: ['명륜진사갈비', '육회한판', '샐러디 강남점', '아딘타', '봉피양', '토속촌삼계탕', '버거앤프라이즈', '동대문엽기떡볶이'],
@@ -43,6 +45,7 @@ const POOLS = {
     교육: ['해커스어학원', '패스트캠퍼스', 'YBM 시사'],
   },
 };
+// (아래 RANGE는 카테고리별 금액 범위와 월 평균 건수, FIXED는 매달 고정으로 나가는 구독·통신비·월급·월세입니다.)
 // [금액 범위] 카테고리별 [최소, 최대, 월 평균 건수]
 const RANGE = { 식비: [8000, 26000, 9], 카페: [3900, 7200, 12], '마트·편의점': [2500, 70000, 11], 교통: [1450, 21000, 22], 쇼핑: [9000, 65000, 4], '의료·건강': [3500, 32000, 2], '문화·여가': [9000, 28000, 2], 교육: [30000, 90000, 1] };
 const FIXED = {
@@ -51,10 +54,13 @@ const FIXED = {
   held: { subs: [['티빙', 13900, 6], ['OPENAI *CHATGPT SUBSCR', 29000, 14], ['왓챠', 12900, 21]], phone: ['SK텔레콤 통신요금', 84000, 18], salary: 3900000, rent: 950000 },
 };
 
+// 숫자를 두 자리로(5 → '05'), 천 단위 쉼표 문자열, CSV 칸 따옴표 처리(쉼표·따옴표·줄바꿈이 있으면 감쌈)
 const pad = (n) => String(n).padStart(2, '0');
 const wonStr = (n) => n.toLocaleString('en-US');
 const q = (s) => (/[",\n]/u.test(s) ? `"${s.replace(/"/gu, '""')}"` : s);
 
+// generate: 거래 목록(tx), 정답 이상 지출(truth), CSV 텍스트(text)를 함께 만듭니다.
+//   순서: ① 달마다 일반 지출 생성 ② 고정 구독·통신비 ③ 헷갈리기 쉬운 정상 거래(오탐 점검용) ④ 마지막 달에 이상 지출 5건 심기 ⑤ CSV로 렌더링
 export function generate({ seed = 1, style = 'A', variant = 'dev', months = ['2026-07', '2026-08', '2026-09', '2026-10'] } = {}) {
   const R = rng(seed), pool = POOLS[variant], fx = FIXED[variant], scale = { dev: 1, held: 1.7, held2: 1.35 }[variant];
   const pick = (a) => a[Math.floor(R() * a.length)];
@@ -105,6 +111,7 @@ export function generate({ seed = 1, style = 'A', variant = 'dev', months = ['20
   return { text: render(tx, style, months), tx, truth, style, variant };
 }
 
+// 거래 목록을 형식별 CSV로 만듭니다. A: 카드(시각·취소 행), B: 카드(안내 문구·따옴표 금액·합계 줄), C: 은행(출금/입금/잔액).
 function render(tx, style, months) {
   const L = [];
   if (style === 'A') {

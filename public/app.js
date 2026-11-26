@@ -1,15 +1,22 @@
 // MoneyMate 화면 로직.
 // [보안] 서버에서 온 글(가맹점 이름·경고 문장)은 전부 textContent/DOM API로만 넣습니다. innerHTML을 쓰지 않으므로
 //        가맹점 이름에 <script>가 들어 있어도 실행되지 않습니다(XSS 방지). CSP 헤더가 한 번 더 막습니다.
+// 자주 쓰는 도우미: document.querySelector의 줄임말.
 const $ = (s) => document.querySelector(s);
 
 // 익명 ID: 브라우저가 만든 난수. 이름·연락처를 받지 않습니다.
+// 익명 사용자 ID 생성(브라우저의 암호학적 난수 UUID에서 24자). 서버와 형식이 같아야 합니다(u-로 시작).
 const newId = () => 'u-' + crypto.randomUUID().replace(/-/gu, '').slice(0, 24);
+// localStorage 안전 래퍼: 시크릿 모드·저장 차단 환경에서는 접근만 해도 예외가 나므로 try/catch로 감쌉니다.
 const safe = { get(k) { try { return localStorage.getItem(k); } catch { return null; } }, set(k, v) { try { localStorage.setItem(k, v); } catch { /* 저장 불가 환경 */ } } };
+// 이 브라우저의 사용자 ID: 처음이면 만들어 저장하고, 이후에는 같은 ID를 써서 이전 기록을 이어 봅니다.
 let userId = safe.get('mo_user') || newId(); safe.set('mo_user', userId);
+// CATS: 서버가 알려 준 카테고리 목록(선택 상자에 사용). state.month: 현재 보고 있는 월.
 let CATS = [];
 let state = { month: null };
 
+// DOM 생성 도우미: h('div', {class:'x'}, '글', 자식…) → 요소를 만들어 돌려줍니다.
+// 글은 항상 텍스트 노드(createTextNode)로만 넣습니다 → 가맹점 이름에 <script>가 있어도 실행되지 않음(XSS 방지).
 function h(tag, attrs = {}, ...kids) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
@@ -20,20 +27,30 @@ function h(tag, attrs = {}, ...kids) {
   for (const kid of kids.flat()) if (kid != null && kid !== false) el.append(kid.nodeType ? kid : document.createTextNode(String(kid)));
   return el;
 }
+// 서버 호출 도우미: 응답이 실패(4xx/5xx)면 서버가 준 한국어 오류 문구로 예외를 던져 화면에 그대로 보여 줍니다.
+// raw를 주면 JSON이 아닌 바이트 본문(CSV 파일)으로 보냅니다.
 async function api(path, { method = 'GET', body, raw } = {}) {
   const res = await fetch(path, { method, headers: raw ? { 'content-type': 'application/octet-stream' } : body ? { 'content-type': 'application/json' } : {}, body: raw ?? (body ? JSON.stringify(body) : undefined) });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(data.error || `오류 ${res.status}`);
   return data;
 }
+// 쿼리 문자열 만들기: userId는 항상 포함하고 추가 값(month 등)을 덧붙입니다.
 const qs = (o = {}) => new URLSearchParams({ userId, ...o }).toString();
+// 금액 표시: 1234567 → '1,234,567원'
 const won = (n) => `${Math.round(n).toLocaleString('ko-KR')}원`;
+// 증감 표시: 양수면 '+'를 붙임(전월 대비)
 const signed = (n) => `${n > 0 ? '+' : ''}${won(n)}`;
+// 경고 유형 코드 → 화면에 보일 한국어 이름
 const TYPE = { duplicate: '중복 결제 의심', outlier: '유난히 큰 지출', new_merchant: '처음 보는 가맹점', price_change: '정기결제 금액 변동' };
+// 예산 상태 코드 → [화면 문구, 색상 CSS 클래스]
 const STATUS = { over: ['초과', 'stat-over'], warn: ['초과 예상', 'stat-warn'], ok: ['정상', 'stat-ok'] };
+// 분류 방법 배지: AI가 제안한 것은 "AI 제안(미확인)", 분류 안 된 것은 "미분류", 확정된 것은 배지 없음.
 const methodBadge = (t) => (t.catMethod === 'ai' ? h('span', { class: 'badge ai', title: 'AI가 제안한 분류입니다. 맞으면 "확인"을 눌러 확정하세요.' }, 'AI 제안(미확인)') : t.catMethod === 'none' ? h('span', { class: 'badge warn' }, '미분류') : null);
 
 // ── 상태 줄 ────────────────────────────────────────────────
+// ── 상태 줄 ──
+// 서버의 AI 연결 상태를 상단에 표시하고, 카테고리 목록을 받아 둡니다. AI가 없으면 "AI 분류 제안" 버튼을 끕니다.
 async function showStatus(reconnect = false) {
   try {
     const s = reconnect ? await api('/api/llm/reconnect', { method: 'POST', body: {} }) : await api('/api/status');
@@ -46,6 +63,8 @@ async function showStatus(reconnect = false) {
 $('#reconnect').addEventListener('click', async () => { $('#reconnect').disabled = true; await showStatus(true); $('#reconnect').disabled = false; });
 
 // ── 탭 ─────────────────────────────────────────────────────
+// ── 탭 ──
+// 탭 전환: 선택한 탭만 보이게 하고, 그 탭의 내용을 서버에서 새로 불러옵니다.
 const TABS = ['import', 'report', 'tx', 'budget'];
 function openTab(name) {
   for (const t of document.querySelectorAll('.tab')) t.classList.toggle('on', t.dataset.tab === name);
@@ -58,6 +77,9 @@ function openTab(name) {
 for (const t of document.querySelectorAll('.tab')) t.addEventListener('click', () => openTab(t.dataset.tab));
 
 // ── 가져오기 ───────────────────────────────────────────────
+// ── 가져오기 ──
+// CSV 바이트를 서버로 보내고 결과(새 거래·중복·제외된 줄·미분류 가맹점)를 안내 문구로 보여 줍니다.
+// 보내는 동안 버튼을 잠가 두 번 눌러 중복 요청이 가는 것을 막습니다.
 async function sendCsv(filename, bytes) {
   $('#importMsg').textContent = '가져오는 중…'; $('#importMsg').className = 'muted';
   $('#goImport').disabled = true; $('#sample').disabled = true;
@@ -73,16 +95,19 @@ async function sendCsv(filename, bytes) {
   } catch (e) { $('#importMsg').textContent = e.message; $('#importMsg').className = 'err'; }
   finally { $('#goImport').disabled = false; $('#sample').disabled = false; }
 }
+// [가져오기] 버튼: 선택한 파일을 읽어 sendCsv로 전달
 $('#goImport').addEventListener('click', async () => {
   const f = $('#file').files[0];
   if (!f) { $('#importMsg').textContent = 'CSV 파일을 선택해 주세요.'; $('#importMsg').className = 'err'; return; }
   await sendCsv(f.name, await f.arrayBuffer());
 });
+// [샘플로 체험하기] 버튼: 서버의 가상 샘플 CSV를 받아 같은 방식으로 가져오기
 $('#sample').addEventListener('click', async () => {
   const s = await api('/api/sample');
   if (!s.csv) { $('#importMsg').textContent = '샘플 파일이 없습니다.'; return; }
   await sendCsv(s.filename, new TextEncoder().encode(s.csv));
 });
+// 가져온 파일 목록을 그리고, 각 파일에 삭제 버튼(확인창 포함)을 붙입니다.
 async function loadImports() {
   const list = await api(`/api/report?${qs()}`).then((r) => r.imports ?? []).catch(() => []);
   const box = $('#imports'); box.replaceChildren();
@@ -91,6 +116,7 @@ async function loadImports() {
     h('span', {}, h('b', {}, i.filename), ' ', h('span', { class: 'badge' }, i.format === 'bank' ? '은행' : '카드'), ` 새 ${i.added}건 · 중복 ${i.duplicates}건 · 제외 ${i.skipped}줄`),
     h('button', { class: 'ghost mini danger', type: 'button', onclick: async () => { if (!confirm(`'${i.filename}'에서 가져온 거래 ${i.added}건을 삭제할까요?`)) return; await api('/api/imports/delete', { method: 'POST', body: { userId, importId: i.id } }); loadImports(); } }, '삭제')));
 }
+// [AI에게 분류 제안 받기] 버튼: 미분류 가맹점 이름만 서버가 AI에 전달합니다(몇 십 초 걸릴 수 있어 진행 문구 표시).
 $('#goAi').addEventListener('click', async () => {
   $('#goAi').disabled = true; $('#aiMsg').textContent = 'AI가 분류를 제안하는 중… (몇 십 초 걸릴 수 있어요)'; $('#aiMsg').className = 'muted';
   try {
@@ -101,9 +127,13 @@ $('#goAi').addEventListener('click', async () => {
 });
 
 // ── 월 리포트 ──────────────────────────────────────────────
+// ── 월 리포트 ──
+// 월 선택 상자를 채웁니다(cur이 현재 선택된 월).
 function fillMonths(sel, months, cur) {
   sel.replaceChildren(...months.map((m) => h('option', { value: m, selected: m === cur }, m)));
 }
+// 월 리포트 화면을 그립니다. 위에서부터: ① 핵심 숫자 4개 ② 확인할 지출(경고) ③ 예산 ④ 카테고리별 ⑤ 일별 막대 ⑥ 상위 가맹점 ⑦ 정기결제.
+// 모든 숫자·문장은 서버(코드)가 계산한 값을 그대로 보여 줄 뿐, 화면에서 다시 계산하지 않습니다.
 async function loadReport() {
   const r = await api(`/api/report?${qs(state.month ? { month: state.month } : {})}`);
   const box = $('#report'); box.replaceChildren();
@@ -157,9 +187,12 @@ async function loadReport() {
     box.append(h('table', {}, h('tbody', {}, r.recurring.map((m) => h('tr', {}, h('td', {}, m.merchant), h('td', {}, m.category), h('td', { class: 'n' }, won(m.amount)), h('td', { class: 'muted' }, m.priceChanged ? `가격 변동(이전 ${won(m.previous)})` : `${m.count}회 연속`))))));
   }
 }
+// 월을 바꾸면 그 달 리포트를 다시 불러옵니다.
 $('#month').addEventListener('change', (e) => { state.month = e.target.value; loadReport(); });
 
 // ── 거래 내역 ──────────────────────────────────────────────
+// ── 거래 내역 ──
+// 거래 화면의 필터(월·카테고리) 선택 상자를 채운 뒤 조회합니다.
 async function loadTx() {
   const rep = await api(`/api/report?${qs()}`).catch(() => ({ months: [] }));
   const mSel = $('#txMonth'), cur = mSel.value || state.month || '';
@@ -168,6 +201,8 @@ async function loadTx() {
   cSel.replaceChildren(h('option', { value: '' }, '전체 카테고리'), ...CATS.map((c) => h('option', { value: c, selected: c === cc }, c)));
   await queryTx();
 }
+// 필터 조건으로 거래를 조회해 표로 그립니다. 카테고리 선택 상자를 바꾸면 즉시 서버에 "분류 고치기"를 보내고,
+// AI 제안 거래에는 "확인" 버튼을 붙여 누르면 그 분류가 사용자 규칙으로 확정됩니다.
 async function queryTx() {
   const p = {}; if ($('#txMonth').value) p.month = $('#txMonth').value; if ($('#txCat').value) p.category = $('#txCat').value; if ($('#txQ').value.trim()) p.q = $('#txQ').value.trim();
   const r = await api(`/api/transactions?${qs(p)}`);
@@ -184,10 +219,13 @@ async function queryTx() {
         t.catMethod === 'ai' ? h('button', { class: 'ghost mini', type: 'button', onclick: async () => { await api('/api/transactions/category', { method: 'POST', body: { userId, txId: t.id, category: t.category } }); queryTx(); } }, '확인') : null]),
       h('td', { class: `n ${t.kind === 'refund' ? 'refund' : ''}` }, `${t.kind === 'refund' ? '-' : ''}${won(t.amount)}`))))));
 }
+// [조회] 버튼과 검색창 Enter 키로 거래를 다시 조회
 $('#goTx').addEventListener('click', queryTx);
 $('#txQ').addEventListener('keydown', (e) => { if (e.key === 'Enter') queryTx(); });
 
 // ── 예산 ───────────────────────────────────────────────────
+// ── 예산 ──
+// 카테고리마다 입력칸+저장 버튼을 그립니다(비우고 저장하면 삭제). 현재 달의 사용 금액도 함께 보여 줍니다.
 async function loadBudgets() {
   const rep = await api(`/api/report?${qs(state.month ? { month: state.month } : {})}`).catch(() => ({ budgets: [] }));
   const cur = new Map((rep.budgets ?? []).map((b) => [b.category, b]));
@@ -202,6 +240,8 @@ async function loadBudgets() {
 }
 
 // ── 전체 삭제 ──────────────────────────────────────────────
+// ── 전체 삭제 ──
+// 확인창을 거친 뒤 서버의 내 기록을 모두 지우고, 새 익명 ID로 바꿔 완전히 새로 시작합니다.
 $('#forget').addEventListener('click', async () => {
   if (!confirm('이 브라우저의 모든 가계부 기록(거래·분류 규칙·예산)을 삭제합니다. 복구할 수 없습니다. 계속할까요?')) return;
   await api('/api/forget', { method: 'POST', body: { userId, confirm: true } });
@@ -209,4 +249,5 @@ $('#forget').addEventListener('click', async () => {
   $('#importResult').replaceChildren(); $('#importMsg').textContent = '모두 삭제했습니다.'; loadImports();
 });
 
+// 시작: 상태를 먼저 받아 카테고리 목록을 확보한 뒤 첫 탭(가져오기)을 엽니다.
 showStatus().then(() => openTab('import'));

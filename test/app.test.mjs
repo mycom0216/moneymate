@@ -6,11 +6,14 @@ import { createApp } from '../src/app.mjs';
 import { createHandler } from '../src/http.mjs';
 import { Store } from '../src/db.mjs';
 
+// 이 파일은 서비스(app.mjs)·DB·HTTP를 통합해 검증합니다. 메모리 DB와 가짜 AI를 쓰고, "오늘"을 2026-10-27로 고정해 결과가 항상 같게 합니다.
+// A·B는 서로 다른 사용자: 남의 데이터에 접근할 수 없는지(소유자 격리) 확인하는 데 씁니다.
 const TODAY = '2026-10-27';
 const A = 'user-aaaaaa', B = 'user-bbbbbb';
 const csv = (...lines) => Buffer.from(['이용일시,이용가맹점,이용금액,구분', ...lines].join('\n') + '\n', 'utf8');
 const mk = async (llm = { available: false, label: 'off', ensure: async () => false }) => createApp({ llm, today: () => TODAY });
 
+// 기본 테스트 데이터: 지점이 다른 같은 가게(스타벅스 2곳), 사전에 없는 가게, 같은 날 같은 금액의 정상 거래 2건.
 const BASE = csv(
   '2026-09-01 10:00:00,스타벅스 강남역점,5000,승인', '2026-09-02 10:00:00,스타벅스 서초점,5500,승인',
   '2026-10-02 12:00:00,알수없는상점,30000,승인', '2026-10-03 09:00:00,GS25 역삼점,3000,승인', '2026-10-03 09:00:00,GS25 역삼점,3000,승인',
@@ -116,6 +119,7 @@ test('AI 분류 제안: 미분류 가맹점에만, 금액 없이 이름만 전�
   const off = await mk(); await assert.rejects(off.classifyAi(A), (e) => e.status === 503);
 });
 
+// 아래는 실제 HTTP 서버를 임의 포트로 띄워 fetch로 호출합니다. 상태 코드(400/404/413/415/429)와 보안 헤더를 확인합니다.
 // ── HTTP ──────────────────────────────────────────────────
 async function withServer(fn, opts = {}) {
   const app = await mk();

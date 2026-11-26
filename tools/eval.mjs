@@ -16,15 +16,18 @@ import { detectAnomalies } from '../src/analyze.mjs';
 import { suggestCategories } from '../src/ai.mjs';
 import { LLM } from '../src/llm.mjs';
 
+// 평가 세트: [시드, CSV 형식, 데이터 변형]. 개발용(dev)은 규칙을 만들며 계속 본 것, held1은 1라운드, held2는 수정 후 새로 만든 최종 평가용.
 const SETS = {
   dev: [[1, 'A', 'dev'], [2, 'B', 'dev'], [3, 'C', 'dev']],
   held1: [[11, 'A', 'held'], [12, 'B', 'held'], [13, 'C', 'held']],
   held2: [[21, 'A', 'held2'], [22, 'B', 'held2'], [23, 'C', 'held2']],
 };
+// 비율을 '12.3%' 문자열로(분모 0이면 '-')
 const pct = (a, b) => (b ? `${(Math.round((a / b) * 1000) / 10).toFixed(1)}%` : '-');
 const which = process.argv.slice(2).filter((a) => !a.startsWith('--'));
 const useLlm = process.argv.includes('--llm');
 
+// 세트 하나를 평가합니다: 생성 → 읽기 → 분류 → 이상 탐지 → 정답과 비교. 결과 숫자를 객체로 돌려줍니다.
 function run([seed, style, variant]) {
   const g = generate({ seed, style, variant });
   const led = readLedger(g.text, { year: 2026 });
@@ -33,10 +36,12 @@ function run([seed, style, variant]) {
     const c = t.kind === 'income' ? { category: '수입', method: 'rule' } : classify(norm);
     return { id: i + 1, ...t, norm, category: c.category, catMethod: c.method };
   });
+  // (읽기 평가) 날짜·금액·종류가 같은 거래가 정답에 몇 개나 있는지 센다. 같은 값이 여러 개면 한 번씩만 대응시킨다.
   // ① 읽기: (날짜, 금액, 종류) 다중집합 일치
   const key = (t) => `${t.date}|${t.amount}|${t.kind}`;
   const pool = new Map(); for (const t of g.tx) pool.set(key(t), (pool.get(key(t)) ?? 0) + 1);
   let parseOk = 0; for (const t of txs) { const n = pool.get(key(t)) ?? 0; if (n > 0) { parseOk++; pool.set(key(t), n - 1); } }
+  // (분류 평가) 규칙만 사용. 규칙이 분류를 시도한 것 중 맞은 비율(정밀도)과, 분류를 시도한 비율을 따로 센다.
   // ② 분류: 가맹점 이름 → 정답 카테고리 (같은 순서로 대응시키기 위해 정답 목록에서 이름·금액·날짜로 찾음)
   const truthBy = new Map(); for (const t of g.tx) { const k = `${t.date}|${t.merchant}|${t.amount}`; (truthBy.get(k) ?? truthBy.set(k, []).get(k)).push(t.category); }
   let cls = 0, clsOk = 0, covered = 0, coveredOk = 0; const wrong = new Map(), unknown = new Map();
@@ -48,6 +53,7 @@ function run([seed, style, variant]) {
     if (t.catMethod !== 'none') { covered++; if (t.category === truth) coveredOk++; if (t.category !== truth) wrong.set(`${t.merchant} → ${t.category}(정답 ${truth})`, 1); }
     else if (truth !== '기타') unknown.set(t.merchant, { norm: t.norm, truth });
   }
+  // (이상 탐지 평가) 정답 5건과 (유형·날짜·금액)이 모두 같으면 TP, 정답에 없는 경고는 오탐(FP).
   // ③ 이상 지출
   const month = '2026-10';
   const found = detectAnomalies(txs, month);
@@ -60,6 +66,7 @@ function run([seed, style, variant]) {
   return { style, seed, rows: g.tx.length, parsed: txs.length, parseOk, cls, clsOk, covered, coveredOk, wrong: [...wrong.keys()], unknown, truthN: g.truth.length, tp, anyTp, fp, missed: g.truth.filter((a) => !foundSet.has(fk(a))) };
 }
 
+// 실행: 인자로 세트 이름을 주면 그 세트만, 없으면 전부. --llm이면 AI 제안 정확도도 측정합니다(Ollama 필요).
 const names = which.length ? which : Object.keys(SETS);
 for (const name of names) {
   console.log(`\n══ ${name} ══`);
